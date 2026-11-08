@@ -10,10 +10,12 @@
 
 ## 当前状态
 
-`v0.2` 骨架可跑通：录制 → 事件流 → 合并步骤 → 裁剪标注 → Markdown。
-用演示数据验证过：4 条事件自动合并为 3 个步骤，输出 `output/tutorial.md` 与 3 张带红框和序号的截图。
+`v0.3` 全链路打通：录制 → 自动导出事件流 → 合并步骤 → 裁剪标注 → Markdown。
 
-尚未实现：画面差异去重、Word / HTML 导出、步骤人工确认页、打包。
+- 录制结束时自动把 `events.json` 和截图一起写进 `Downloads/auto-tutorial/`，不用再去控制台抄事件
+- 演示数据验证：4 条事件合并为 3 个步骤，输出 `output/tutorial.md` 与 3 张带红框和序号的截图
+
+尚未实现：画面差异去重、Word / HTML 导出、步骤人工确认页、打包分发。
 
 
 ## 目录结构
@@ -25,17 +27,38 @@ tools/       演示数据生成脚本
 docs/        设计文档
 ```
 
-## 快速开始（第 1 周验证用）
+## 快速开始（完整链路）
+
+**第一步：录一次操作**
 
 1. 打开 Chrome 或 Edge，访问 `chrome://extensions`
 2. 右上角打开「开发者模式」
 3. 点「加载已解压的扩展程序」，选择本仓库的 `extension/` 目录
-4. 打开任意网页，点浏览器工具栏上的扩展图标 → 开始录制（图标出现 REC 标记）
-5. 在页面上点几下、输入一点内容，再点一次图标结束录制
-6. 截图会保存到浏览器下载目录下的 `auto-tutorial/` 子目录
-7. 事件流（点击坐标、元素文字、页面地址）存在扩展的 `chrome.storage.local` 中，可在扩展页的「检查视图」控制台里查看
+4. 打开要演示的网页，点工具栏上的扩展图标开始录制（图标出现 REC 红标）
+5. 正常操作一遍：点按钮、填输入框、切换菜单
+6. 再点一次图标结束录制
 
-如果能顺利产出"5 次点击 → 5 张截图 + 5 条事件记录"，说明路线成立，可以继续做后面的抽帧与成文。
+结束时会自动往浏览器的下载目录里写两份东西：
+
+```
+Downloads/auto-tutorial/
+├── events.json          # 事件流：坐标、元素名字、页面地址、截图文件名
+├── 001_1730...png       # 每次操作后的整屏截图
+├── 003_1730...png
+└── ...
+```
+
+**第二步：生成教程**
+
+```powershell
+python pipeline\run.py `
+  --events "$env:USERPROFILE\Downloads\auto-tutorial\events.json" `
+  --shots  "$env:USERPROFILE\Downloads\auto-tutorial" `
+  --out output
+```
+
+得到 `output/tutorial.md`、`output/steps/*.png`（裁剪 + 红框 + 序号）、`output/steps.json`。
+多次录制会覆盖 `events.json`，想保留就先把整个 `auto-tutorial/` 目录另存。
 
 ### 只验证处理链（不需要装扩展）
 
@@ -49,15 +72,26 @@ python tools/make_demo.py
 python pipeline/run.py --events samples/events.json --shots samples/shots --out output
 ```
 
-会得到 `output/tutorial.md`、`output/steps/*.png`（裁剪 + 红框 + 序号）、`output/steps.json`。
-
 常用参数：`--title` 指定标题，`--window 1500` 调合并阈值（毫秒），`--format docx` 或 `both` 额外导出 Word（需 `pip install python-docx`）。
+
+### 自测
+
+```bash
+python tools/pipeline_selftest.py   # 处理链：扩展格式的 events.json -> 教程
+node   tools/extension_selftest.js  # 扩展逻辑：事件不丢 / 截图分批 / 导出 JSON
+```
+
+## 已知坑
+
+- **Windows 显示缩放不是 100% 时**，截图是物理像素、事件坐标是 CSS 像素，靠 `devicePixelRatio` 换算；如果某张图红框偏了，先确认录制时缩放值没变（换显示器、改缩放都会变）。
+- **截图有 700ms 延迟**：点击后页面若立刻跳转，截到的是跳转后的画面。需要"点击瞬间"的画面时，把跳转类操作拆成单独一次录制。
+- Chrome 限制每秒最多 2 次 `captureVisibleTab`，所以录制时操作别快到 0.5 秒一次以上，否则会掉图（脚本会告警"缺少对应截图"）。
 
 ## 技术路线
 
 | 环节 | 做法 | 状态 |
 |---|---|---|
-| 采集 | Chrome MV3 扩展，监听 click / change，事件后 400ms 调 `captureVisibleTab` 截图 | 已有骨架 |
+| 采集 | Chrome MV3 扩展，监听 click / change；事件即时登记，700ms 批次截屏；结束录制自动导出 events.json | 已实现 |
 | 抽帧 | 同页同类型事件在 1.5 秒内合并，合并后按最后一次操作定位 | 已实现（基础版） |
 | 标注 | 按 dpr 换算坐标，裁 760×440 焦点区，框外压暗，画红框与序号 | 已实现（基础版） |
 | 成文 | Markdown 模板；Word 可选 | Markdown 已实现，Word 待验证 |

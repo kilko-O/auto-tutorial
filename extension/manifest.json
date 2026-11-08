@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Auto Tutorial Recorder",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "录制网页操作，自动生成图文教程",
   "permissions": ["tabs", "downloads", "storage", "activeTab"],
   "host_permissions": ["<all_urls>"],
