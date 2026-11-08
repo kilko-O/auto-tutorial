@@ -1,0 +1,5 @@
+# 运行 pipeline 所需
+pillow>=10.0
+
+# 可选：导出 Word 时使用
+python-docx>=1.1

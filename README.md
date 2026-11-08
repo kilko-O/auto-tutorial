@@ -10,14 +10,18 @@
 
 ## 当前状态
 
-`v0.1` 最小原型：录制点击 / 输入事件 + 自动截屏 + 事件流落盘。
-**抽帧去重、标注、成文导出尚未实现**，属于后续阶段。
+`v0.2` 骨架可跑通：录制 → 事件流 → 合并步骤 → 裁剪标注 → Markdown。
+用演示数据验证过：4 条事件自动合并为 3 个步骤，输出 `output/tutorial.md` 与 3 张带红框和序号的截图。
+
+尚未实现：画面差异去重、Word / HTML 导出、步骤人工确认页、打包。
+
 
 ## 目录结构
 
 ```
 extension/   浏览器扩展：采集操作事件与截图（Chrome MV3）
-pipeline/    抽帧、标注、成文（Python，待实现）
+pipeline/    处理链：frames.py 合并步骤 / annotate.py 裁剪标注 / render.py 成文 / run.py 命令行入口
+tools/       演示数据生成脚本
 docs/        设计文档
 ```
 
@@ -33,14 +37,30 @@ docs/        设计文档
 
 如果能顺利产出"5 次点击 → 5 张截图 + 5 条事件记录"，说明路线成立，可以继续做后面的抽帧与成文。
 
+### 只验证处理链（不需要装扩展）
+
+```bash
+pip install -r requirements.txt
+
+# 生成演示页面和 4 条事件
+python tools/make_demo.py
+
+# 事件流 -> 教程
+python pipeline/run.py --events samples/events.json --shots samples/shots --out output
+```
+
+会得到 `output/tutorial.md`、`output/steps/*.png`（裁剪 + 红框 + 序号）、`output/steps.json`。
+
+常用参数：`--title` 指定标题，`--window 1500` 调合并阈值（毫秒），`--format docx` 或 `both` 额外导出 Word（需 `pip install python-docx`）。
+
 ## 技术路线
 
 | 环节 | 做法 | 状态 |
 |---|---|---|
 | 采集 | Chrome MV3 扩展，监听 click / change，事件后 400ms 调 `captureVisibleTab` 截图 | 已有骨架 |
-| 抽帧 | 同页连续事件合并、画面差异过滤 | 待实现 |
-| 标注 | 按坐标裁焦点区域、画红框与序号、可选 OCR 读按钮文字 | 待实现 |
-| 成文 | Jinja2 模板 → Markdown / docx | 待实现 |
+| 抽帧 | 同页同类型事件在 1.5 秒内合并，合并后按最后一次操作定位 | 已实现（基础版） |
+| 标注 | 按 dpr 换算坐标，裁 760×440 焦点区，框外压暗，画红框与序号 | 已实现（基础版） |
+| 成文 | Markdown 模板；Word 可选 | Markdown 已实现，Word 待验证 |
 
 ## 分工
 

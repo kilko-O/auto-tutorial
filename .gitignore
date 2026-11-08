@@ -12,6 +12,7 @@ npm-debug.log*
 # 运行时产物
 captures/
 output/
+samples/
 *.docx
 !docs/**
 
