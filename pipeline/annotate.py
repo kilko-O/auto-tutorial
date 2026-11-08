@@ -1,4 +1,4 @@
-"""截图裁剪 + 标注
+﻿"""截图裁剪 + 标注
 
 给定一张整屏截图和一个步骤，裁出点击附近的区域，并画红框与序号。
 坐标换算：截图是物理像素，事件坐标是 CSS 像素，必须乘 devicePixelRatio。
@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-CROP_W, CROP_H = 760, 440          # 输出裁剪区大小（物理像素）
+CROP_W, CROP_H = 680, 400          # 输出裁剪区大小（物理像素）
 FOCUS_W, FOCUS_H = 210, 96         # 红框大小，元素尺寸未知时的经验值
 RED = (214, 48, 49)
 BADGE_R = 17
@@ -74,7 +74,7 @@ def crop_and_mark(shot_path: str | Path, step, out_path: str | Path, crop_size=N
         (0, box[1], box[0], box[3]),
         (box[2], box[1], cw, box[3]),
     ):
-        dim_draw.rectangle(rect, fill=(0, 0, 0, 55))
+        dim_draw.rectangle(rect, fill=(0, 0, 0, 45))
     cropped = Image.alpha_composite(cropped, dim)
 
     draw = ImageDraw.Draw(cropped)
