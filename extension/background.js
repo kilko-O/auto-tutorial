@@ -23,9 +23,13 @@ init();
 
 async function init() {
   const data = await chrome.storage.local.get(["recording", STORAGE_KEY]);
-  recording = !!data.recording;
   events = Array.isArray(data[STORAGE_KEY]) ? data[STORAGE_KEY] : [];
   seq = events.reduce((max, e) => Math.max(max, Number(e.seq) || 0), 0);
+  if (data.recording) {
+    // 上次录制异常中断留下的状态残留：按未开始处理，避免一打开就误判成"正在录制"
+    await chrome.storage.local.set({ recording: false });
+  }
+  recording = false;
   setBadge();
 }
 
@@ -63,6 +67,7 @@ async function startRecording() {
   await chrome.storage.local.set({ recording: true, [STORAGE_KEY]: [] });
   setBadge();
   await broadcastState();
+  console.log("[auto-tutorial] 开始录制");
 }
 
 async function stopRecording() {
@@ -200,6 +205,7 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 
   events.push(record);
   batch.push(record);
+  console.log(`[auto-tutorial] 收到事件 #${seq} ${record.type} ${record.label || ""}`);
   schedulePersist();
   scheduleCapture(sender.tab.windowId);
 });

@@ -2,13 +2,34 @@
 
 let recording = false;
 
+const BADGE_ID = "__auto_tutorial_rec_badge__";
+
+function renderBadge() {
+  let badge = document.getElementById(BADGE_ID);
+  if (recording) {
+    if (!badge) {
+      badge = document.createElement("div");
+      badge.id = BADGE_ID;
+      badge.style.cssText =
+        "position:fixed;top:12px;right:12px;z-index:2147483647;background:rgba(217,48,37,.92);color:#fff;font:13px/1.4 sans-serif;padding:6px 10px;border-radius:6px;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.25)";
+      badge.textContent = "● 录制中";
+      document.documentElement.appendChild(badge);
+    }
+  } else if (badge) {
+    badge.remove();
+  }
+}
+
 chrome.storage.local.get("recording", (data) => {
   recording = !!data.recording;
+  renderBadge();
+  console.log("[auto-tutorial] content.js 已加载：", location.href);
 });
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg && msg.kind === "recording-state") {
     recording = !!msg.recording;
+    renderBadge();
   }
 });
 
@@ -83,6 +104,7 @@ function labelOf(el) {
 
 function send(type, payload) {
   try {
+    console.log("[auto-tutorial] 上报事件：", type, payload.label || "");
     chrome.runtime.sendMessage({
       kind: "ui-event",
       type,
