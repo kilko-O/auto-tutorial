@@ -69,13 +69,13 @@ function emit(type, label, x, y) {
   await actionListeners[0]();
   await sleep(30);
 
-  // 三次操作，前两次间隔很近（同一批截图），第三次单独一批
+  // 三次操作：点击各自立即抓一张，输入走 400ms 批次
   emit("click", "登录", 265, 444);
   await sleep(100);
   emit("input", "学号", 360, 260);
-  await sleep(1400); // 等第一批截图（延迟 1.2s）
+  await sleep(600); // 等输入批次截图（400ms）
   emit("click", "提交", 265, 746);
-  await sleep(1400);
+  await sleep(300);
 
   // 结束录制 -> 触发导出
   await actionListeners[0]();
@@ -87,9 +87,9 @@ function emit(type, label, x, y) {
 
   const problems = [];
   if (events.length !== 3) problems.push(`事件数应为 3，实际 ${events.length}`);
-  if (pngDownloads.length !== 2) problems.push(`截图批次数应为 2，实际 ${pngDownloads.length}`);
+  if (pngDownloads.length !== 3) problems.push(`截图批次数应为 3，实际 ${pngDownloads.length}`);
   if (events.some((e) => !e.shot)) problems.push("有事件没分到截图");
-  if (events[0].shot !== events[1].shot) problems.push("前两条事件应共用一张截图");
+  if (events[0].shot === events[1].shot) problems.push("点击与输入应各自一张截图");
   if (!jsonDownload) problems.push("没有导出 events.json");
 
   if (jsonDownload) {
@@ -106,5 +106,5 @@ function emit(type, label, x, y) {
     problems.forEach((p) => console.log(" -", p));
     process.exit(1);
   }
-  console.log("PASS：3 条事件 / 2 批截图 / 1 份导出，时间戳递增");
+  console.log("PASS：3 条事件 / 3 张截图 / 1 份导出，时间戳递增");
 })();

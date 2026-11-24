@@ -40,6 +40,14 @@ function clean(text) {
     .slice(0, 40);
 }
 
+// 容器把多个输入框/按钮的文字拼在一起（如「+86 发送验证码 请输入验证码」），不算元素名
+function isAggregated(text) {
+  const t = String(text || "");
+  if (!t) return false;
+  if (t.split(" ").filter(Boolean).length >= 2) return true;
+  return /请输入|请设置|请填写/.test(t) && t.length > 6;
+}
+
 function textOf(el) {
   if (!el) return "";
   return clean(el.innerText || el.textContent || el.value || "");
@@ -63,6 +71,21 @@ function rectOf(el) {
     w: Math.round(r.width),
     h: Math.round(r.height),
   };
+}
+
+// 输入框本身往往只有一行文字高（~20px），向上找单行包装容器（一整行 ~44px）；
+// 太高的祖先包了账号+密码多行，不能用，高度上限 64px。
+function fieldBox(el) {
+  const field = el && el.closest ? el.closest("input, textarea, select") : null;
+  if (!field) return rectOf(el);
+  let cur = field;
+  let best = rectOf(field);
+  for (let i = 0; i < 3 && cur.parentElement; i++) {
+    const r = rectOf(cur.parentElement);
+    if (r && r.h >= 28 && r.h <= 64 && (!best || r.w >= best.w)) best = r;
+    cur = cur.parentElement;
+  }
+  return best || rectOf(field);
 }
 
 // 取元素的"人话名字"：优先无障碍标签、占位符，其次关联的 <label>，
@@ -96,7 +119,7 @@ function labelOf(el) {
   let cur = el;
   for (let i = 0; i < 4 && cur && cur !== document.body; i++) {
     const t = textOf(cur);
-    if (t) return t;
+    if (t && !isAggregated(t)) return t;
     cur = cur.parentElement;
   }
   return "";
@@ -124,21 +147,74 @@ document.addEventListener(
   "click",
   (e) => {
     if (!recording) return;
-    const target = actionable(e.target);
-    const r = rectOf(target) || rectOf(e.target) || {
-      x: Math.round(e.clientX),
-      y: Math.round(e.clientY),
-      w: 0,
-      h: 0,
-    };
+    const raw = e.target;
+    const target = actionable(raw);
+    const rawRect = /^(INPUT|TEXTAREA|SELECT)$/.test(raw.tagName || "")
+      ? fieldBox(raw)
+      : rectOf(raw);
+    const actRect = target === raw ? null : rectOf(target);
+    let r;
+    if (rawRect && actRect) {
+      // 祖先容器比原始元素大太多（外面套了大卡片/弹窗），保留更小的原始元素框
+      r = actRect.w * actRect.h <= 3 * rawRect.w * rawRect.h ? actRect : rawRect;
+    } else {
+      r = actRect || rawRect || {
+        x: Math.round(e.clientX),
+        y: Math.round(e.clientY),
+        w: 0,
+        h: 0,
+      };
+    }
+    const tagName = target && target.tagName ? target.tagName.toLowerCase() : "";
+    // 点到了大容器空白处（表单/卡片背景）：不用整个容器的大框，退回点击位置的固定小框
+    const GENERIC = new Set(["div", "form", "section", "span", "ul", "ol", "p", "article"]);
+    let box = r;
+    if (GENERIC.has(tagName) && r && r.h > 80) {
+      box = { x: Math.round(e.clientX), y: Math.round(e.clientY), w: 210, h: 96 };
+    }
     send("click", {
-      x: r.x,
-      y: r.y,
-      w: r.w,
-      h: r.h,
-      tag: target && target.tagName ? target.tagName.toLowerCase() : "",
+      x: box.x,
+      y: box.y,
+      w: box.w,
+      h: box.h,
+      tag: tagName,
       label: labelOf(target),
     });
+  },
+  true
+);
+
+// input 在打字过程中持续触发，400ms 防抖后上报一次，避免每个按键都生成一条事件；
+// 失焦时的 change 再补一条，处理链会把同一输入框的两次输入合并为一步。
+const INPUT_DEBOUNCE_MS = 400;
+const inputTimers = new WeakMap();
+
+document.addEventListener(
+  "input",
+  (e) => {
+    if (!recording) return;
+    const el = e.target;
+    if (!el || !el.tagName) return;
+    if (!/^(INPUT|TEXTAREA)$/.test(el.tagName)) return;
+    if (el.type === "checkbox" || el.type === "radio" || el.type === "hidden") return;
+
+    clearTimeout(inputTimers.get(el));
+    inputTimers.set(
+      el,
+      setTimeout(() => {
+        if (!recording) return;
+        const r = fieldBox(el) || {};
+        send("input", {
+          x: r.x ?? 0,
+          y: r.y ?? 0,
+          w: r.w ?? 0,
+          h: r.h ?? 0,
+          tag: el.tagName.toLowerCase(),
+          label: labelOf(el),
+          value: String(el.value || "").replace(/\s+/g, " ").trim().slice(0, 30),
+        });
+      }, INPUT_DEBOUNCE_MS)
+    );
   },
   true
 );
@@ -151,7 +227,7 @@ document.addEventListener(
     const el = e.target;
     if (!el) return;
 
-    const r = rectOf(el) || {};
+    const r = fieldBox(el) || {};
     const isCheck = el.type === "checkbox" || el.type === "radio";
 
     let type = "input";

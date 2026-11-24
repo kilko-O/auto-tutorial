@@ -6,9 +6,11 @@
 // 3. 结束录制时自动把整段事件流写成 events.json 下载到 auto-tutorial/ 目录，直接喂给 pipeline。
 
 const DOWNLOAD_DIR = "auto-tutorial";
-// 弹窗 / 验证码常在点击后 1 秒左右才出现，延迟取 1.2s 留出渲染时间；
+// 弹窗 / 验证码常在点击后 1 秒左右才出现，点击类延迟取 1.2s 留出渲染时间；
+// 输入完成后不需要等弹窗，400ms 内截图即可，避免后弹出的验证码把输入框遮住。
 // Chrome 限制每秒最多 2 次 captureVisibleTab，别再往下压。
 const CAPTURE_DELAY_MS = 1200;
+const INPUT_CAPTURE_DELAY_MS = 400;
 const STORAGE_KEY = "events";
 
 let recording = false;
@@ -104,22 +106,37 @@ function schedulePersist() {
   }, 200);
 }
 
-function scheduleCapture(windowId) {
+function scheduleCapture(windowId, delayMs = CAPTURE_DELAY_MS) {
   lastWindowId = windowId ?? lastWindowId;
   if (captureTimer) clearTimeout(captureTimer);
   captureTimer = setTimeout(() => {
     captureTimer = null;
     flushBatch().catch(() => {});
-  }, CAPTURE_DELAY_MS);
+  }, delayMs);
 }
 
-async function flushBatch(force = false) {
+async function captureOne(record, windowId) {
+  // 点击事件单独即时抓一张，不碰待发的输入批次，避免两张事件共用一张截图
+  try {
+    const dataUrl = await chrome.tabs.captureVisibleTab(windowId ?? lastWindowId, { format: "png" });
+    const stamp = Date.now();
+    const name = `${DOWNLOAD_DIR}/${String(record.seq).padStart(3, "0")}_${stamp}.png`;
+    await chrome.downloads.download({ url: dataUrl, filename: name, saveAs: false });
+    record.shot = name;
+    await persistNow();
+  } catch (e) {
+    console.warn("[auto-tutorial] capture failed:", e);
+    schedulePersist();
+  }
+}
+
+async function flushBatch(force = false, fallbackWindowId = null) {
   if (!force && !recording) return;
   if (!batch.length) return;
 
   const targets = batch;
   batch = [];
-  const windowId = lastWindowId;
+  const windowId = fallbackWindowId ?? lastWindowId;
 
   try {
     const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
@@ -204,10 +221,15 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   };
 
   events.push(record);
-  batch.push(record);
   console.log(`[auto-tutorial] 收到事件 #${seq} ${record.type} ${record.label || ""}`);
   schedulePersist();
-  scheduleCapture(sender.tab.windowId);
+  if (record.type === "click") {
+    // 点击先抓一张瞬间画面给按钮定位，避免被随后弹出的验证码/弹窗盖住
+    captureOne(record, sender.tab.windowId).catch(() => {});
+  } else {
+    batch.push(record);
+    scheduleCapture(sender.tab.windowId, INPUT_CAPTURE_DELAY_MS);
+  }
 });
 
 async function exportEvents() {

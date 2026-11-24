@@ -2,18 +2,21 @@
 
 给定一张整屏截图和一个步骤，裁出点击附近的区域，并画红框与序号。
 坐标换算：截图是物理像素，事件坐标是 CSS 像素，必须乘 devicePixelRatio。
+
+隐私遮盖不做自动猜测：需要隐藏的区域由复核页人工框选马赛克，
+结果保存在 step.mosaics（裁剪图相对坐标），这里只负责按记录打码。
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 CROP_W, CROP_H = 680, 400          # 输出裁剪区大小（物理像素）
 FOCUS_W, FOCUS_H = 210, 96         # 红框大小，元素尺寸未知时的经验值
 RED = (214, 48, 49)
 BADGE_R = 17
+MOSAIC_BLUR = 10
 
 _FONT_CANDIDATES = (
     r"C:\Windows\Fonts\msyhbd.ttc",
@@ -34,7 +37,46 @@ def font(size: int) -> ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def crop_and_mark(shot_path: str | Path, step, out_path: str | Path, crop_size=None) -> Path:
+def _apply_mosaics(cropped: Image.Image, mosaics) -> None:
+    """把复核页人工框选的马赛克区域做高斯模糊（裁剪图相对物理像素）。"""
+    if not mosaics:
+        return
+    for m in mosaics:
+        try:
+            x = int(round(float(m.get("x", 0))))
+            y = int(round(float(m.get("y", 0))))
+            w = int(round(float(m.get("w", 0))))
+            h = int(round(float(m.get("h", 0))))
+        except (TypeError, ValueError):
+            continue
+        if w < 8 or h < 8:
+            continue
+        interior = (x + 3, y + 3, x + w - 3, y + h - 3)
+        if interior[2] <= interior[0] or interior[3] <= interior[1]:
+            continue
+        sub = cropped.crop(interior).filter(ImageFilter.GaussianBlur(MOSAIC_BLUR))
+        cropped.paste(sub, interior)
+
+
+def make_placeholder(step, out_path: str | Path) -> Path:
+    """找不到原始截图时生成一张带步骤号的缺图占位标注图，保证成文不崩。"""
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    img = Image.new("RGB", (CROP_W, CROP_H), (243, 244, 246))
+    d = ImageDraw.Draw(img)
+    d.rectangle((1, 1, CROP_W - 2, CROP_H - 2), outline=(209, 213, 219), width=2)
+    title = f"缺少步骤 {step.index} 的截图"
+    sub = "录制时这一步没有抓到画面，可在复核页删除该步或补拍后重跑"
+    f1, f2 = font(26), font(16)
+    t1 = d.textlength(title, font=f1)
+    t2 = d.textlength(sub, font=f2)
+    d.text(((CROP_W - t1) / 2, CROP_H / 2 - 30), title, font=f1, fill=(107, 114, 128))
+    d.text(((CROP_W - t2) / 2, CROP_H / 2 + 14), sub, font=f2, fill=(156, 163, 175))
+    img.save(out_path, format="PNG", optimize=True)
+    return out_path
+
+
+def crop_and_mark(shot_path, step, out_path: str | Path, crop_size=None) -> Path:
     """裁出焦点区域并标注，返回输出文件路径。"""
     shot_path = Path(shot_path)
     out_path = Path(out_path)
@@ -59,27 +101,41 @@ def crop_and_mark(shot_path: str | Path, step, out_path: str | Path, crop_size=N
 
     px, py = cx - left, cy - top
 
-    # 元素真实尺寸（CSS 像素 × dpr 换算成物理像素）；读不到时退回固定经验值
-    css_w = float(getattr(step, "w", 0) or 0)
-    css_h = float(getattr(step, "h", 0) or 0)
-    PAD = 5
-    MIN_W, MIN_H = 24, 16
-    if css_w >= 10 and css_h >= 10:
-        bw = max(MIN_W, round(css_w * dpr) + PAD * 2)
-        bh = max(MIN_H, round(css_h * dpr) + PAD * 2)
+    saved_box = getattr(step, "box", None)
+    if saved_box and len(saved_box) == 4:
+        # 复核页人工调整过红框：直接沿用裁剪图相对坐标，夹到裁剪区内
+        box = tuple(max(0, int(round(v))) for v in saved_box)
+        box = (
+            min(box[0], cw - 2),
+            min(box[1], ch - 2),
+            min(box[2], cw - 2),
+            min(box[3], ch - 2),
+        )
     else:
-        bw, bh = FOCUS_W, FOCUS_H
+        # 元素真实尺寸（CSS 像素 × dpr 换算成物理像素）；读不到时退回固定经验值
+        css_w = float(getattr(step, "w", 0) or 0)
+        css_h = float(getattr(step, "h", 0) or 0)
+        PAD = 5
+        MIN_W, MIN_H = 24, 16
+        if css_w >= 10 and css_h >= 10:
+            bw = max(MIN_W, round(css_w * dpr) + PAD * 2)
+            bh = max(MIN_H, round(css_h * dpr) + PAD * 2)
+        else:
+            bw, bh = FOCUS_W, FOCUS_H
 
-    box = (
-        max(2, px - bw // 2),
-        max(2, py - bh // 2),
-        min(cw - 2, px + bw // 2),
-        min(ch - 2, py + bh // 2),
-    )
-    if box[2] - box[0] < MIN_W:
-        box = (max(2, px - MIN_W // 2), box[1], min(cw - 2, px + MIN_W // 2), box[3])
-    if box[3] - box[1] < MIN_H:
-        box = (box[0], max(2, py - MIN_H // 2), box[2], min(ch - 2, py + MIN_H // 2))
+        box = (
+            max(2, px - bw // 2),
+            max(2, py - bh // 2),
+            min(cw - 2, px + bw // 2),
+            min(ch - 2, py + bh // 2),
+        )
+        if box[2] - box[0] < MIN_W:
+            box = (max(2, px - MIN_W // 2), box[1], min(cw - 2, px + MIN_W // 2), box[3])
+        if box[3] - box[1] < MIN_H:
+            box = (box[0], max(2, py - MIN_H // 2), box[2], min(ch - 2, py + MIN_H // 2))
+
+    # 把最终渲染的红框回写到步骤，复核页据此生成可拖动/缩放的覆盖层
+    step.box = [int(box[0]), int(box[1]), int(box[2]), int(box[3])]
 
     # 框外压暗，突出焦点
     dim = Image.new("RGBA", cropped.size, (0, 0, 0, 0))
@@ -92,6 +148,9 @@ def crop_and_mark(shot_path: str | Path, step, out_path: str | Path, crop_size=N
     ):
         dim_draw.rectangle(rect, fill=(0, 0, 0, 45))
     cropped = Image.alpha_composite(cropped, dim)
+
+    # 人工框选的马赛克（先打码，红框最后画在最上层保持清晰）
+    _apply_mosaics(cropped, getattr(step, "mosaics", None))
 
     draw = ImageDraw.Draw(cropped)
     draw.rectangle(box, outline=RED, width=3)

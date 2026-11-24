@@ -13,6 +13,7 @@ npm-debug.log*
 captures/
 output/
 samples/
+dist/
 *.docx
 !docs/**
 
