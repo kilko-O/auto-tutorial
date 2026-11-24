@@ -24,16 +24,24 @@ function textOf(el) {
   return clean(el.innerText || el.textContent || el.value || "");
 }
 
-// 元素本身或祖先被隐藏（display:none / visibility:hidden）、尺寸为 0 时，不录事件
-function isVisible(el) {
-  let cur = el;
-  while (cur && cur !== document.body) {
-    const cs = getComputedStyle(cur);
-    if (cs.display === "none" || cs.visibility === "hidden") return false;
-    cur = cur.parentElement;
-  }
-  const r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
-  return !!r && r.width >= 2 && r.height >= 2;
+// 点到的常常是按钮里的 span/图标，向上找到真正可点击的容器，框才画得准
+function actionable(el) {
+  if (!el || !el.closest) return el;
+  return (
+    el.closest("button, a, label, [role='button'], input, select, textarea, li, td") || el
+  );
+}
+
+function rectOf(el) {
+  if (!el || typeof el.getBoundingClientRect !== "function") return null;
+  const r = el.getBoundingClientRect();
+  if (!r || !(r.width > 0) || !(r.height > 0)) return null;
+  return {
+    x: Math.round(r.left + r.width / 2),
+    y: Math.round(r.top + r.height / 2),
+    w: Math.round(r.width),
+    h: Math.round(r.height),
+  };
 }
 
 // 取元素的"人话名字"：优先无障碍标签、占位符，其次关联的 <label>，
@@ -94,13 +102,20 @@ document.addEventListener(
   "click",
   (e) => {
     if (!recording) return;
-    const el = e.target;
-    if (!el || !isVisible(el)) return;
-    send("click", {
+    const target = actionable(e.target);
+    const r = rectOf(target) || rectOf(e.target) || {
       x: Math.round(e.clientX),
       y: Math.round(e.clientY),
-      tag: el && el.tagName ? el.tagName.toLowerCase() : "",
-      label: labelOf(el),
+      w: 0,
+      h: 0,
+    };
+    send("click", {
+      x: r.x,
+      y: r.y,
+      w: r.w,
+      h: r.h,
+      tag: target && target.tagName ? target.tagName.toLowerCase() : "",
+      label: labelOf(target),
     });
   },
   true
@@ -112,9 +127,9 @@ document.addEventListener(
   (e) => {
     if (!recording) return;
     const el = e.target;
-    if (!el || !isVisible(el)) return;
+    if (!el) return;
 
-    const rect = typeof el.getBoundingClientRect === "function" ? el.getBoundingClientRect() : null;
+    const r = rectOf(el) || {};
     const isCheck = el.type === "checkbox" || el.type === "radio";
 
     let type = "input";
@@ -130,8 +145,10 @@ document.addEventListener(
     }
 
     send(type, {
-      x: rect ? Math.round(rect.left + rect.width / 2) : 0,
-      y: rect ? Math.round(rect.top + rect.height / 2) : 0,
+      x: r.x ?? 0,
+      y: r.y ?? 0,
+      w: r.w ?? 0,
+      h: r.h ?? 0,
       tag: el.tagName ? el.tagName.toLowerCase() : "",
       label: labelOf(el),
       value: value.replace(/\s+/g, " ").trim().slice(0, 30),

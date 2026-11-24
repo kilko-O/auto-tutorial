@@ -6,8 +6,9 @@
 // 3. 结束录制时自动把整段事件流写成 events.json 下载到 auto-tutorial/ 目录，直接喂给 pipeline。
 
 const DOWNLOAD_DIR = "auto-tutorial";
-// Chrome 限制每秒最多 2 次 captureVisibleTab，700ms 防抖留出余量
-const CAPTURE_DELAY_MS = 700;
+// 弹窗 / 验证码常在点击后 1 秒左右才出现，延迟取 1.2s 留出渲染时间；
+// Chrome 限制每秒最多 2 次 captureVisibleTab，别再往下压。
+const CAPTURE_DELAY_MS = 1200;
 const STORAGE_KEY = "events";
 
 let recording = false;
@@ -129,6 +130,33 @@ async function flushBatch(force = false) {
   }
 }
 
+// 手动补一张：弹窗 / 验证码晚于自动截图出现时，在扩展控制台调用
+// chrome.runtime.sendMessage({kind:"capture-now"})，把最近一步的截图换成当前画面
+async function captureNow() {
+  if (!events.length) {
+    console.warn("[auto-tutorial] 还没有事件，无法补截图");
+    return;
+  }
+  try {
+    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const tab = tabs && tabs[0];
+    if (!tab) throw new Error("找不到活动标签页");
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+    const stamp = Date.now();
+    const name = `${DOWNLOAD_DIR}/manual_${String(events.length).padStart(3, "0")}_${stamp}.png`;
+    await chrome.downloads.download({ url: dataUrl, filename: name, saveAs: false });
+
+    const prevShot = events[events.length - 1].shot;
+    for (const ev of events) {
+      if (!prevShot || ev.shot === prevShot) ev.shot = name;
+    }
+    await persistNow();
+    console.log("[auto-tutorial] 已补截图：", name);
+  } catch (e) {
+    console.warn("[auto-tutorial] 补截图失败：", e);
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (!msg || !msg.kind) return;
 
@@ -139,6 +167,11 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 
   if (msg.kind === "export-events") {
     exportEvents();
+    return;
+  }
+
+  if (msg.kind === "capture-now") {
+    captureNow();
     return;
   }
 
@@ -157,6 +190,8 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     dpr: msg.dpr || 1,
     x: msg.x || 0,
     y: msg.y || 0,
+    w: msg.w || 0,
+    h: msg.h || 0,
     tag: msg.tag || "",
     label: msg.label || "",
     value: msg.value || "",

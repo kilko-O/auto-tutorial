@@ -70,6 +70,8 @@ class Step:
     x: int = 0
     y: int = 0
     dpr: float = 1.0
+    w: int = 0
+    h: int = 0
     label: str = ""
     value: str = ""
     image: str = ""
@@ -107,6 +109,8 @@ class Step:
             "x": self.x,
             "y": self.y,
             "dpr": self.dpr,
+            "w": self.w,
+            "h": self.h,
             "label": self.label,
             "image": self.image,
             "text": self.action_text,
@@ -151,6 +155,8 @@ def build_steps(events: Iterable[dict[str, Any]], window_ms: int = MERGE_WINDOW_
             last.x = int(event.get("x", last.x) or 0)
             last.y = int(event.get("y", last.y) or 0)
             last.dpr = float(event.get("dpr", last.dpr) or 1)
+            last.w = int(event.get("w", last.w) or 0)
+            last.h = int(event.get("h", last.h) or 0)
 
             if kind == "check":
                 last.kind = "check"
@@ -171,6 +177,8 @@ def build_steps(events: Iterable[dict[str, Any]], window_ms: int = MERGE_WINDOW_
                 x=int(event.get("x", 0) or 0),
                 y=int(event.get("y", 0) or 0),
                 dpr=float(event.get("dpr", 1) or 1),
+                w=int(event.get("w", 0) or 0),
+                h=int(event.get("h", 0) or 0),
                 label=label,
                 value=value if kind in ("check", "input") else "",
                 image=shot,

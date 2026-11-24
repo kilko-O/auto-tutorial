@@ -73,9 +73,9 @@ function emit(type, label, x, y) {
   emit("click", "登录", 265, 444);
   await sleep(100);
   emit("input", "学号", 360, 260);
-  await sleep(900); // 等第一批截图
+  await sleep(1400); // 等第一批截图（延迟 1.2s）
   emit("click", "提交", 265, 746);
-  await sleep(900);
+  await sleep(1400);
 
   // 结束录制 -> 触发导出
   await actionListeners[0]();

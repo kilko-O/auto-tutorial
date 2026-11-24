@@ -58,12 +58,28 @@ def crop_and_mark(shot_path: str | Path, step, out_path: str | Path, crop_size=N
     cropped = img.crop((left, top, left + cw, top + ch)).convert("RGBA")
 
     px, py = cx - left, cy - top
+
+    # 元素真实尺寸（CSS 像素 × dpr 换算成物理像素）；读不到时退回固定经验值
+    css_w = float(getattr(step, "w", 0) or 0)
+    css_h = float(getattr(step, "h", 0) or 0)
+    PAD = 5
+    MIN_W, MIN_H = 24, 16
+    if css_w >= 10 and css_h >= 10:
+        bw = max(MIN_W, round(css_w * dpr) + PAD * 2)
+        bh = max(MIN_H, round(css_h * dpr) + PAD * 2)
+    else:
+        bw, bh = FOCUS_W, FOCUS_H
+
     box = (
-        max(2, px - FOCUS_W // 2),
-        max(2, py - FOCUS_H // 2),
-        min(cw - 2, px + FOCUS_W // 2),
-        min(ch - 2, py + FOCUS_H // 2),
+        max(2, px - bw // 2),
+        max(2, py - bh // 2),
+        min(cw - 2, px + bw // 2),
+        min(ch - 2, py + bh // 2),
     )
+    if box[2] - box[0] < MIN_W:
+        box = (max(2, px - MIN_W // 2), box[1], min(cw - 2, px + MIN_W // 2), box[3])
+    if box[3] - box[1] < MIN_H:
+        box = (box[0], max(2, py - MIN_H // 2), box[2], min(ch - 2, py + MIN_H // 2))
 
     # 框外压暗，突出焦点
     dim = Image.new("RGBA", cropped.size, (0, 0, 0, 0))

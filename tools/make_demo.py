@@ -64,16 +64,16 @@ def main() -> int:
     url = "https://jw.example.edu/login"
     events = [
         {"type": "click", "url": url, "title": "教务系统 - 登录",
-         "x": 265, "y": 444, "dpr": 1, "tag": "button", "label": "登录",
+         "x": 265, "y": 444, "w": 130, "h": 48, "dpr": 1, "tag": "button", "label": "登录",
          "shot": "001.png", "ts": 1000},
         {"type": "input", "url": url, "title": "教务系统 - 登录",
-         "x": 360, "y": 260, "dpr": 1, "tag": "input", "label": "学号", "value": "20230001",
+         "x": 360, "y": 260, "w": 320, "h": 48, "dpr": 1, "tag": "input", "label": "学号", "value": "20230001",
          "shot": "002.png", "ts": 9000},
         {"type": "click", "url": "https://jw.example.edu/select", "title": "教务系统 - 选课",
-         "x": 265, "y": 565, "dpr": 1, "tag": "div", "label": "选课",
+         "x": 265, "y": 565, "w": 130, "h": 50, "dpr": 1, "tag": "div", "label": "选课",
          "shot": "003.png", "ts": 17000},
         {"type": "click", "url": "https://jw.example.edu/select", "title": "教务系统 - 选课",
-         "x": 265, "y": 746, "dpr": 1, "tag": "button", "label": "提交",
+         "x": 265, "y": 746, "w": 130, "h": 52, "dpr": 1, "tag": "button", "label": "提交",
          "shot": "004.png", "ts": 17600},
     ]
 

@@ -25,6 +25,8 @@
   "vw": 1440,
   "vh": 900,
   "dpr": 1.25,
+  "w": 130,
+  "h": 48,
   "tag": "button",
   "label": "提交",
   "shot": "auto-tutorial/003_1770000000000.png",
