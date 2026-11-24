@@ -19,8 +19,13 @@ function clean(text) {
     .slice(0, 40);
 }
 
-// 取元素的"人话名字"：优先无障碍标签、占位符，其次关联的 <label>，最后才是可见文字。
-// 注意：输入框的 value 是用户输入的内容，不能当名字用。
+function textOf(el) {
+  if (!el) return "";
+  return clean(el.innerText || el.textContent || el.value || "");
+}
+
+// 取元素的"人话名字"：优先无障碍标签、占位符，其次关联的 <label>，
+// 再向上找最近的可点击祖先文字。输入框的 value 是用户输入，不能当名字。
 function labelOf(el) {
   if (!el || !el.getAttribute) return "";
 
@@ -34,20 +39,26 @@ function labelOf(el) {
   if (el.id) {
     try {
       const bound = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-      if (bound && bound.innerText) return clean(bound.innerText);
+      if (bound && textOf(bound)) return textOf(bound);
     } catch (e) {
-      // CSS.escape 在极老版本不存在，忽略
+      // 极老浏览器没有 CSS.escape，忽略
     }
   }
 
   const wrapper = typeof el.closest === "function" ? el.closest("label") : null;
-  if (wrapper && wrapper.innerText) return clean(wrapper.innerText);
+  if (wrapper && textOf(wrapper)) return textOf(wrapper);
 
   if (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT") {
     return clean(el.name || el.type || "");
   }
 
-  return clean(el.innerText || el.textContent);
+  let cur = el;
+  for (let i = 0; i < 4 && cur && cur !== document.body; i++) {
+    const t = textOf(cur);
+    if (t) return t;
+    cur = cur.parentElement;
+  }
+  return "";
 }
 
 function send(type, payload) {
@@ -82,7 +93,7 @@ document.addEventListener(
   true
 );
 
-// change 在输入框失焦 / 选择项改动时触发，正好对应"完成这一步操作"的时刻
+// change 在输入框失焦 / 选择项改动 / 勾选时触发，对应"完成这一步操作"的时刻
 document.addEventListener(
   "change",
   (e) => {
@@ -91,8 +102,12 @@ document.addEventListener(
     if (!el) return;
 
     const rect = typeof el.getBoundingClientRect === "function" ? el.getBoundingClientRect() : null;
+    const isCheck = el.type === "checkbox" || el.type === "radio";
+
+    let type = "input";
     let value = "";
-    if (el.type === "checkbox" || el.type === "radio") {
+    if (isCheck) {
+      type = "click";
       value = el.checked ? "勾选" : "取消勾选";
     } else if (el.tagName === "SELECT") {
       const opt = el.options && el.options[el.selectedIndex];
@@ -101,7 +116,7 @@ document.addEventListener(
       value = String(el.value || "");
     }
 
-    send("input", {
+    send(type, {
       x: rect ? Math.round(rect.left + rect.width / 2) : 0,
       y: rect ? Math.round(rect.top + rect.height / 2) : 0,
       tag: el.tagName ? el.tagName.toLowerCase() : "",
