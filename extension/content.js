@@ -24,6 +24,18 @@ function textOf(el) {
   return clean(el.innerText || el.textContent || el.value || "");
 }
 
+// 元素本身或祖先被隐藏（display:none / visibility:hidden）、尺寸为 0 时，不录事件
+function isVisible(el) {
+  let cur = el;
+  while (cur && cur !== document.body) {
+    const cs = getComputedStyle(cur);
+    if (cs.display === "none" || cs.visibility === "hidden") return false;
+    cur = cur.parentElement;
+  }
+  const r = el.getBoundingClientRect ? el.getBoundingClientRect() : null;
+  return !!r && r.width >= 2 && r.height >= 2;
+}
+
 // 取元素的"人话名字"：优先无障碍标签、占位符，其次关联的 <label>，
 // 再向上找最近的可点击祖先文字。输入框的 value 是用户输入，不能当名字。
 function labelOf(el) {
@@ -83,6 +95,7 @@ document.addEventListener(
   (e) => {
     if (!recording) return;
     const el = e.target;
+    if (!el || !isVisible(el)) return;
     send("click", {
       x: Math.round(e.clientX),
       y: Math.round(e.clientY),
@@ -99,7 +112,7 @@ document.addEventListener(
   (e) => {
     if (!recording) return;
     const el = e.target;
-    if (!el) return;
+    if (!el || !isVisible(el)) return;
 
     const rect = typeof el.getBoundingClientRect === "function" ? el.getBoundingClientRect() : null;
     const isCheck = el.type === "checkbox" || el.type === "radio";

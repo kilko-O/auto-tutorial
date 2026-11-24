@@ -34,6 +34,9 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = Path(args.out)
     steps_dir = out_dir / "steps"
     steps_dir.mkdir(parents=True, exist_ok=True)
+    # 清掉上一轮残留的标注图，避免步骤变少后旧图留在目录里
+    for old in steps_dir.glob("*.png"):
+        old.unlink()
     shots_dir = Path(args.shots)
 
     missing = 0
